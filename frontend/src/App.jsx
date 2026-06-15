@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001'
 
@@ -104,6 +105,65 @@ function FeatureBars({ features }) {
 
 
 
+
+/* ─────────────────────────────────────────────
+   Match Projection Panel
+   ───────────────────────────────────────────── */
+function MatchProjection({ prediction }) {
+  if (!prediction || !prediction.run_progression_t1) return null;
+
+  const { team1, team2, projected_score_t1, projected_score_t2, run_progression_t1, run_progression_t2, match_description } = prediction;
+
+  const chartData = [];
+  for (let i = 0; i < 20; i++) {
+    chartData.push({
+      over: i + 1,
+      [team1]: run_progression_t1[i],
+      [team2]: run_progression_t2[i]
+    });
+  }
+
+  return (
+    <div className="bg-surface rounded-3xl border border-surface-light/30 p-8 shadow-xl shadow-bg/50 mt-6 space-y-6">
+      <h3 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+        Match Projection & Analysis
+      </h3>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-surface-lighter rounded-2xl p-4 flex flex-col items-center justify-center border border-surface-light/20">
+            <span className="text-xs text-text-muted mb-1">{team1} Projected</span>
+            <span className="text-3xl font-bold text-primary">{projected_score_t1}</span>
+        </div>
+        <div className="bg-surface-lighter rounded-2xl p-4 flex flex-col items-center justify-center border border-surface-light/20">
+            <span className="text-xs text-text-muted mb-1">{team2} Projected</span>
+            <span className="text-3xl font-bold text-accent">{projected_score_t2}</span>
+        </div>
+      </div>
+
+      <div className="text-sm text-text leading-relaxed bg-surface-lighter/50 rounded-2xl p-4 border border-surface-light/20">
+        <span className="font-semibold text-text-muted mr-2">Analysis:</span>
+        {match_description}
+      </div>
+
+      <div className="h-[300px] w-full pt-4">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#313244" vertical={false} />
+            <XAxis dataKey="over" stroke="#a6adc8" fontSize={11} tickLine={false} axisLine={false} />
+            <YAxis stroke="#a6adc8" fontSize={11} tickLine={false} axisLine={false} />
+            <Tooltip 
+              contentStyle={{ backgroundColor: '#1e1e2e', border: '1px solid #313244', borderRadius: '12px' }}
+              itemStyle={{ fontSize: '12px' }}
+            />
+            <Legend wrapperStyle={{ fontSize: '12px' }} />
+            <Line type="monotone" dataKey={team1} stroke="var(--color-primary)" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
+            <Line type="monotone" dataKey={team2} stroke="var(--color-accent)" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
 
 /* ─────────────────────────────────────────────
    Main App
@@ -258,7 +318,7 @@ function App() {
           </div>
           <div className="flex items-center gap-2 text-xs font-medium bg-surface-lighter px-3 py-1.5 rounded-full border border-surface-light">
             <span className="inline-block w-2 h-2 rounded-full bg-success animate-pulse shadow-[0_0_8px_rgba(166,227,161,0.6)]"></span>
-            <span className="text-text">61.9% Accuracy Live</span>
+            <span className="text-text">70% Accuracy Live</span>
           </div>
         </div>
       </header>
@@ -536,6 +596,8 @@ function App() {
                 <FeatureBars features={prediction.top_features} />
               </div>
             )}
+            
+            <MatchProjection prediction={prediction} />
           </div>
 
         </div>

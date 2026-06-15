@@ -33,6 +33,11 @@ class PredictResponse(BaseModel):
     top_features: list
     input_summary: dict
     diagnosis: Optional[dict] = Field(None, description="Detailed breakdown of prediction factors")
+    projected_score_t1: Optional[int] = Field(None)
+    projected_score_t2: Optional[int] = Field(None)
+    run_progression_t1: Optional[list] = Field(None)
+    run_progression_t2: Optional[list] = Field(None)
+    match_description: Optional[str] = Field(None)
 
 model = None
 venue_le = None
@@ -77,6 +82,81 @@ def get_team_elo(team_name: str, players: list):
         return latest_stats['team_avg_player_elo'].get(team_name, 1500.0)
     elos = [latest_stats['player_elos'].get(p, 1500.0) for p in players]
     return sum(elos) / len(elos)
+
+import random
+import numpy as np
+
+def simulate_match_progression(t1_name, t2_name, t1_elo, t2_elo, t1_form, t2_form, venue_bias, toss_winner, toss_decision, win_prob):
+    base_score = 165
+    venue_impact = (venue_bias - 0.5) * 30
+    elo_diff_t1 = (t1_elo - 1500) / 10
+    elo_diff_t2 = (t2_elo - 1500) / 10
+    form_diff_t1 = (t1_form - 0.5) * 20
+    form_diff_t2 = (t2_form - 0.5) * 20
+    
+    if (toss_winner == t1_name and toss_decision == 'bat') or (toss_winner == t2_name and toss_decision == 'field'):
+        batting_first = t1_name
+        chasing = t2_name
+    else:
+        batting_first = t2_name
+        chasing = t1_name
+        
+    t1_batting_first = (batting_first == t1_name)
+    
+    proj_t1 = int(base_score + elo_diff_t1 + form_diff_t1 + (0 if t1_batting_first else venue_impact))
+    proj_t2 = int(base_score + elo_diff_t2 + form_diff_t2 + (0 if not t1_batting_first else venue_impact))
+    
+    if win_prob > 55 and t1_batting_first and proj_t1 <= proj_t2:
+        proj_t1 = proj_t2 + random.randint(5, 15)
+    elif win_prob > 55 and not t1_batting_first and proj_t2 <= proj_t1:
+        proj_t1 = proj_t2 + random.randint(2, 8)
+    elif win_prob < 45 and t1_batting_first and proj_t2 <= proj_t1:
+        proj_t2 = proj_t1 + random.randint(2, 8)
+    elif win_prob < 45 and not t1_batting_first and proj_t1 <= proj_t2:
+        proj_t2 = proj_t1 + random.randint(5, 15)
+        
+    def generate_progression(total_score):
+        weights = [8]*6 + [7.5]*9 + [10]*5
+        weights = np.array(weights)
+        weights = weights / sum(weights)
+        runs = []
+        cumulative = 0
+        for i in range(19):
+            target_over = total_score * weights[i]
+            over_score = max(2, int(np.random.normal(target_over, 2)))
+            cumulative += over_score
+            runs.append(cumulative)
+        runs.append(total_score)
+        for i in range(1, 20):
+            if runs[i] < runs[i-1]:
+                runs[i] = runs[i-1] + random.randint(1, 4)
+        runs[-1] = total_score
+        return [int(x) for x in runs]
+        
+    prog_t1 = generate_progression(proj_t1)
+    prog_t2 = generate_progression(proj_t2)
+    
+    desc = ""
+    if win_prob > 60:
+        desc += f"{t1_name} enters this match as strong favorites ({win_prob:.1f}% probability). "
+    elif win_prob < 40:
+        desc += f"{t2_name} is heavily favored to win ({100-win_prob:.1f}% probability). "
+    else:
+        desc += f"This is a tightly contested matchup ({win_prob:.1f}% vs {100-win_prob:.1f}%). "
+        
+    if form_diff_t1 > 5 and form_diff_t2 < -5:
+         desc += f"{t1_name}'s excellent recent form gives them a major edge. "
+    elif form_diff_t2 > 5 and form_diff_t1 < -5:
+         desc += f"{t2_name}'s recent momentum is a key positive factor for them. "
+         
+    if venue_impact > 5:
+        desc += f"The venue heavily favors the chasing team, suggesting that {chasing} will have an advantage in the second innings."
+    elif venue_impact < -5:
+        desc += f"The venue is statistically better for defending totals, playing into {batting_first}'s hands."
+    else:
+        desc += f"The toss decision to {toss_decision} by {toss_winner} sets up an intriguing strategic battle."
+        
+    return proj_t1, proj_t2, prog_t1, prog_t2, desc
 
 def build_feature_vector(req: PredictRequest):
     try:
@@ -209,12 +289,21 @@ def predict_match(req: PredictRequest):
         "chasing": req.team2 if (req.toss_winner == req.team1 and req.toss_decision == 'bat') or (req.toss_winner == req.team2 and req.toss_decision == 'field') else req.team1,
     }
 
+    proj_t1, proj_t2, prog_t1, prog_t2, desc = simulate_match_progression(
+        req.team1, req.team2, t1_elo, t2_elo, t1_form, t2_form, venue_bias, req.toss_winner, req.toss_decision, t1_win_prob
+    )
+
     return PredictResponse(
         win_probability=t1_win_prob,
         team1=req.team1,
         team2=req.team2,
         top_features=top_features,
         input_summary=req.dict(),
-        diagnosis=diagnosis
+        diagnosis=diagnosis,
+        projected_score_t1=proj_t1,
+        projected_score_t2=proj_t2,
+        run_progression_t1=prog_t1,
+        run_progression_t2=prog_t2,
+        match_description=desc
     )
 
