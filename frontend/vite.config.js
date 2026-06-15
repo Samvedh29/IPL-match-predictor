@@ -7,3 +7,5 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   base: '/IPL-match-predictor/',
 })
+
+// Trigger deployment
