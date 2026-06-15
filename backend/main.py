@@ -12,9 +12,9 @@ from ipl_2026_squads import IPL_2026_SQUADS
 BASE_DIR = os.path.dirname(__file__)
 MODEL_DIR = os.path.join(BASE_DIR, "model")
 
-MODEL_PATH = os.path.join(MODEL_DIR, "xgb_post_toss.pkl")
-VENUE_LE_PATH = os.path.join(MODEL_DIR, "venue_le.pkl")
-TEAM_LE_PATH = os.path.join(MODEL_DIR, "team_le.pkl")
+MODEL_PATH = os.path.join(MODEL_DIR, "xgb_post_toss.bin")
+VENUE_LE_PATH = os.path.join(MODEL_DIR, "venue_le.bin")
+TEAM_LE_PATH = os.path.join(MODEL_DIR, "team_le.bin")
 STATS_PATH = os.path.join(MODEL_DIR, "latest_stats.json")
 
 class PredictRequest(BaseModel):
