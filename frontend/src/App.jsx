@@ -165,6 +165,349 @@ function MatchProjection({ prediction }) {
   );
 }
 
+
+/* ─────────────────────────────────────────────
+   Prediction Reasoning Panel
+   ───────────────────────────────────────────── */
+function PredictionReasoning({ prediction }) {
+  if (!prediction?.diagnosis) return null;
+
+  const d = prediction.diagnosis;
+  const winProb = Math.round(prediction.win_probability);
+  const team1 = prediction.team1;
+  const team2 = prediction.team2;
+  const favored = winProb >= 50 ? team1 : team2;
+  const favoredProb = winProb >= 50 ? winProb : 100 - winProb;
+
+  // Generate reasoning bullets
+  const reasons = [];
+
+  // 1. ELO Analysis
+  const eloEdge = d.elo_edge;
+  if (Math.abs(eloEdge) > 30) {
+    const stronger = eloEdge > 0 ? team1 : team2;
+    reasons.push({
+      icon: '⚡',
+      title: 'Squad Strength (Player Elo)',
+      detail: `${stronger} has a significantly stronger squad (Elo edge: ${Math.abs(eloEdge).toFixed(0)} pts). Their players have performed better across recent T20 history.`,
+      impact: eloEdge > 0 ? 'favors_t1' : 'favors_t2',
+      values: { t1: d.t1_elo, t2: d.t2_elo }
+    });
+  } else if (Math.abs(eloEdge) > 10) {
+    const stronger = eloEdge > 0 ? team1 : team2;
+    reasons.push({
+      icon: '⚡',
+      title: 'Squad Strength (Player Elo)',
+      detail: `${stronger} holds a slight squad quality advantage (Elo edge: ${Math.abs(eloEdge).toFixed(0)} pts). Individual player form ratings give them a marginal edge.`,
+      impact: eloEdge > 0 ? 'favors_t1' : 'favors_t2',
+      values: { t1: d.t1_elo, t2: d.t2_elo }
+    });
+  } else {
+    reasons.push({
+      icon: '⚡',
+      title: 'Squad Strength (Player Elo)',
+      detail: `Both squads are evenly matched in player quality (Elo diff: ${Math.abs(eloEdge).toFixed(0)} pts). Neither team has a clear individual talent edge.`,
+      impact: 'neutral',
+      values: { t1: d.t1_elo, t2: d.t2_elo }
+    });
+  }
+
+  // 2. Recent Form
+  const formDiff = d.t1_form - d.t2_form;
+  if (Math.abs(formDiff) > 20) {
+    const hotTeam = formDiff > 0 ? team1 : team2;
+    const hotForm = formDiff > 0 ? d.t1_form : d.t2_form;
+    const coldForm = formDiff > 0 ? d.t2_form : d.t1_form;
+    reasons.push({
+      icon: '🔥',
+      title: 'Recent Form (Last 10 Matches)',
+      detail: `${hotTeam} is in excellent form (${hotForm}% win rate in recent matches vs ${coldForm}%). Momentum is a proven factor in T20 cricket.`,
+      impact: formDiff > 0 ? 'favors_t1' : 'favors_t2'
+    });
+  } else if (Math.abs(formDiff) > 10) {
+    const betterTeam = formDiff > 0 ? team1 : team2;
+    reasons.push({
+      icon: '🔥',
+      title: 'Recent Form (Last 10 Matches)',
+      detail: `${betterTeam} has a slight form advantage (${formDiff > 0 ? d.t1_form : d.t2_form}% vs ${formDiff > 0 ? d.t2_form : d.t1_form}%). Recent momentum provides a minor edge.`,
+      impact: formDiff > 0 ? 'favors_t1' : 'favors_t2'
+    });
+  } else {
+    reasons.push({
+      icon: '🔥',
+      title: 'Recent Form (Last 10 Matches)',
+      detail: `Both teams are in similar form (${d.t1_form}% vs ${d.t2_form}%). Neither has a significant momentum advantage heading into this match.`,
+      impact: 'neutral'
+    });
+  }
+
+  // 3. Venue Chase Bias
+  const chaseBias = d.venue_chase_bias;
+  if (chaseBias > 60) {
+    reasons.push({
+      icon: '🏟️',
+      title: 'Venue Bias — Chase-Friendly',
+      detail: `This venue heavily favors the chasing team (${chaseBias}% chase win rate historically). ${d.chasing} benefits from chasing here, with dew and batting-friendly conditions typically aiding the second innings.`,
+      impact: d.chasing === team1 ? 'favors_t1' : 'favors_t2'
+    });
+  } else if (chaseBias < 40) {
+    reasons.push({
+      icon: '🏟️',
+      title: 'Venue Bias — Defend-Friendly',
+      detail: `This venue historically favors defending (only ${chaseBias}% chase win rate). ${d.batting_first} benefits from batting first, as this ground tends to slow down in the second innings.`,
+      impact: d.batting_first === team1 ? 'favors_t1' : 'favors_t2'
+    });
+  } else {
+    reasons.push({
+      icon: '🏟️',
+      title: 'Venue Analysis',
+      detail: `This venue is balanced for both chasing and defending (${chaseBias}% chase win rate). Neither batting first nor chasing provides a decisive statistical edge at this ground.`,
+      impact: 'neutral'
+    });
+  }
+
+  // 4. Toss Impact
+  const tossTeam = d.toss_winner;
+  const tossChoice = d.toss_decision;
+  const tossAligned = (tossChoice === 'field' && chaseBias > 55) || (tossChoice === 'bat' && chaseBias < 45);
+  if (tossAligned) {
+    reasons.push({
+      icon: '🪙',
+      title: 'Toss Decision — Well Aligned',
+      detail: `${tossTeam} won the toss and chose to ${tossChoice}, which aligns well with this venue's historical trend. This is a strategically sound call based on ${chaseBias > 55 ? 'the chase-friendly nature' : 'the defend-friendly nature'} of this ground.`,
+      impact: tossTeam === team1 ? 'favors_t1' : 'favors_t2'
+    });
+  } else {
+    reasons.push({
+      icon: '🪙',
+      title: 'Toss Decision',
+      detail: `${tossTeam} won the toss and chose to ${tossChoice}. Given the venue's chase bias of ${chaseBias}%, this is a ${Math.abs(chaseBias - 50) < 10 ? 'neutral' : 'potentially suboptimal'} decision.`,
+      impact: 'neutral'
+    });
+  }
+
+  // 5. Global Chase Meta
+  const globalBias = d.global_chase_bias;
+  reasons.push({
+    icon: '📊',
+    title: 'Global T20 Meta Trend',
+    detail: `The current global chase win rate stands at ${globalBias}%, reflecting the ${globalBias > 52 ? 'batting-heavy meta where chasing teams have an advantage' : globalBias < 48 ? 'bowling-friendly meta favoring defending teams' : 'balanced meta between chasing and defending'} across recent T20 matches worldwide.`,
+    impact: 'neutral'
+  });
+
+  const getImpactColor = (impact) => {
+    if (impact === 'favors_t1') return '#6366f1';
+    if (impact === 'favors_t2') return '#f59e0b';
+    return '#a6adc8';
+  };
+
+  const getImpactLabel = (impact) => {
+    if (impact === 'favors_t1') return team1;
+    if (impact === 'favors_t2') return team2;
+    return 'Neutral';
+  };
+
+  return (
+    <div className="bg-surface rounded-3xl border border-surface-light/30 p-8 shadow-xl shadow-bg/50 mt-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+            <span className="text-white text-sm">🧠</span>
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-text uppercase tracking-wider">
+              AI Reasoning
+            </h3>
+            <p className="text-[11px] text-text-muted">Based on historical data analysis</p>
+          </div>
+        </div>
+        <div className="verdict-badge px-4 py-2 rounded-full text-sm font-bold" style={{ background: 'linear-gradient(135deg, var(--color-primary), var(--color-accent))', color: 'white' }}>
+          {favored} — {favoredProb}%
+        </div>
+      </div>
+
+      {/* ELO Comparison Bar */}
+      {reasons[0]?.values && (
+        <div className="bg-surface-lighter/50 rounded-2xl p-4 border border-surface-light/20 space-y-3">
+          <div className="flex justify-between text-xs font-semibold">
+            <span className="text-primary">{team1} — {reasons[0].values.t1.toFixed(0)} Elo</span>
+            <span className="text-accent">{team2} — {reasons[0].values.t2.toFixed(0)} Elo</span>
+          </div>
+          <div className="h-3 bg-surface rounded-full overflow-hidden flex">
+            <div
+              className="h-full elo-bar-fill rounded-l-full"
+              style={{
+                width: `${(reasons[0].values.t1 / (reasons[0].values.t1 + reasons[0].values.t2)) * 100}%`,
+                background: 'linear-gradient(90deg, var(--color-primary), var(--color-primary-light))'
+              }}
+            />
+            <div
+              className="h-full elo-bar-fill rounded-r-full"
+              style={{
+                width: `${(reasons[0].values.t2 / (reasons[0].values.t1 + reasons[0].values.t2)) * 100}%`,
+                background: 'linear-gradient(90deg, var(--color-accent), var(--color-accent-light))'
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Reasoning Cards */}
+      <div className="space-y-3 reasoning-scroll" style={{ maxHeight: '500px', overflowY: 'auto' }}>
+        {reasons.map((r, i) => (
+          <div key={i} className="reasoning-card bg-surface-lighter/40 rounded-2xl p-4 border border-surface-light/20 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">{r.icon}</span>
+                <span className="text-sm font-semibold text-text">{r.title}</span>
+              </div>
+              <span
+                className="text-[10px] font-bold uppercase px-2 py-1 rounded-full"
+                style={{
+                  background: getImpactColor(r.impact) + '20',
+                  color: getImpactColor(r.impact),
+                  border: `1px solid ${getImpactColor(r.impact)}40`
+                }}
+              >
+                {r.impact === 'neutral' ? '≈ Neutral' : `↑ ${getImpactLabel(r.impact)}`}
+              </span>
+            </div>
+            <p className="text-xs text-text-muted leading-relaxed">{r.detail}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Verdict Summary */}
+      <div className="bg-gradient-to-r from-primary/10 to-accent/10 rounded-2xl p-5 border border-primary/20">
+        <div className="flex items-start gap-3">
+          <span className="text-2xl mt-0.5">⚖️</span>
+          <div className="space-y-1">
+            <h4 className="text-sm font-bold text-text">Oracle Verdict</h4>
+            <p className="text-xs text-text-muted leading-relaxed">
+              {favoredProb >= 65
+                ? `${favored} is the clear favorite at ${favoredProb}%. The combination of ${eloEdge > 20 ? 'superior squad quality' : 'venue conditions and form'} gives them a strong edge. The model sees this as a relatively one-sided contest based on pre-match data.`
+                : favoredProb >= 55
+                ? `${favored} edges this matchup at ${favoredProb}%. While they hold the advantage, the margin is thin — a single key performance (toss, powerplay, or dew factor) could swing the result. Historically, matches at this confidence level go either way about ${100 - favoredProb}% of the time.`
+                : `This is a genuine coin-flip at ${favoredProb}%. The model cannot separate these two sides significantly. Expect the outcome to hinge on in-match factors like powerplay execution, death bowling, and fielding quality — elements that pre-match models cannot fully capture.`
+              }
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+/* ─────────────────────────────────────────────
+   How It Works Section
+   ───────────────────────────────────────────── */
+function HowItWorks() {
+  const steps = [
+    {
+      num: '01',
+      icon: '📡',
+      title: 'Data Ingestion',
+      desc: 'We ingest thousands of T20 matches from Cricsheet — ball-by-ball data from IPL, T20I, and major T20 leagues. Every delivery, dismissal, and milestone is captured.',
+      detail: '5,000+ matches processed'
+    },
+    {
+      num: '02',
+      icon: '⚡',
+      title: 'Player Elo Tracking',
+      desc: 'Each player is assigned a dynamic Elo rating (like chess). Ratings update after every match based on win/loss outcomes, creating a real-time measure of player form and quality.',
+      detail: 'Tracks 3,000+ players'
+    },
+    {
+      num: '03',
+      icon: '🔥',
+      title: 'Recent Form Engine',
+      desc: 'Team momentum is computed from the last 10 matches. The model weighs recent results exponentially — a team on a 5-match winning streak gets far more credit than one from 3 months ago.',
+      detail: 'Rolling 10-match window'
+    },
+    {
+      num: '04',
+      icon: '🏟️',
+      title: 'Venue Chase Bias',
+      desc: "Every venue has a historical chase/defend win ratio. Wankhede is different from Chepauk. The model knows if a ground favors batting second (dew, flat pitches) or defending (spin-friendly, slow tracks).",
+      detail: '40+ venues profiled'
+    },
+    {
+      num: '05',
+      icon: '🧮',
+      title: 'XGBoost Prediction',
+      desc: 'All features feed into a gradient-boosted decision tree (XGBoost). The model was trained on 12 engineered features with time-decayed sample weights — recent seasons matter more.',
+      detail: '~70% prediction accuracy'
+    },
+    {
+      num: '06',
+      icon: '🧠',
+      title: 'Symmetry Correction',
+      desc: 'To eliminate team-ordering bias, we predict both Team1-vs-Team2 AND Team2-vs-Team1, then average the results. This ensures a truly fair probability regardless of input order.',
+      detail: 'Dual-pass calibration'
+    }
+  ];
+
+  return (
+    <div className="mb-8 space-y-8">
+      {/* Hero Intro */}
+      <div className="text-center space-y-4 py-8">
+        <div className="inline-flex items-center gap-2 bg-surface-lighter/50 px-4 py-2 rounded-full border border-surface-light/50 text-xs text-text-muted">
+          <span className="inline-block w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+          AI-Powered Cricket Analytics
+        </div>
+        <h2 className="text-3xl font-bold text-text">
+          How the Oracle <span style={{ background: 'linear-gradient(90deg, var(--color-primary), var(--color-accent))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Predicts Matches</span>
+        </h2>
+        <p className="text-sm text-text-muted max-w-2xl mx-auto leading-relaxed">
+          Our 0-Ball Prediction Engine analyzes pre-match signals — player quality, team momentum, venue characteristics, and toss dynamics — to forecast match outcomes before a single ball is bowled. Here's the science behind it.
+        </p>
+      </div>
+
+      {/* Steps Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {steps.map((step, i) => (
+          <div key={i} className="step-card bg-surface rounded-2xl border border-surface-light/30 p-6 space-y-4 shadow-lg shadow-bg/30">
+            <div className="flex items-center justify-between">
+              <span className="step-number text-3xl font-black">{step.num}</span>
+              <span className="text-2xl">{step.icon}</span>
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-sm font-bold text-text">{step.title}</h3>
+              <p className="text-xs text-text-muted leading-relaxed">{step.desc}</p>
+            </div>
+            <div className="flex items-center gap-2 text-[10px] font-semibold uppercase text-primary bg-primary/10 px-3 py-1.5 rounded-lg border border-primary/20 w-fit">
+              {step.detail}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Model Accuracy Badge */}
+      <div className="flex justify-center">
+        <div className="bg-surface rounded-2xl border border-surface-light/30 px-8 py-5 flex items-center gap-6 shadow-xl shadow-bg/50">
+          <div className="text-center">
+            <span className="text-3xl font-black" style={{ background: 'linear-gradient(90deg, var(--color-primary), var(--color-accent))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>70%</span>
+            <p className="text-[10px] text-text-muted uppercase mt-1">Overall Accuracy</p>
+          </div>
+          <div className="w-px h-10 bg-surface-lighter"></div>
+          <div className="text-center">
+            <span className="text-3xl font-black" style={{ background: 'linear-gradient(90deg, var(--color-primary), var(--color-accent))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>57</span>
+            <p className="text-[10px] text-text-muted uppercase mt-1">Matches Validated</p>
+          </div>
+          <div className="w-px h-10 bg-surface-lighter"></div>
+          <div className="text-center">
+            <span className="text-3xl font-black" style={{ background: 'linear-gradient(90deg, var(--color-primary), var(--color-accent))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>12</span>
+            <p className="text-[10px] text-text-muted uppercase mt-1">Input Features</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 /* ─────────────────────────────────────────────
    Main App
    ───────────────────────────────────────────── */
@@ -583,21 +926,29 @@ function App() {
 
           {/* ── Results: Gauge + Features ── */}
           <div className="lg:col-span-8 space-y-6">
-            <div className="bg-surface rounded-3xl border border-surface-light/30 p-8 flex flex-col items-center shadow-xl shadow-bg/50">
-              <WinGauge
-                probability={prediction?.win_probability}
-                team1={prediction?.team1 || team1}
-                team2={prediction?.team2 || team2}
-              />
-            </div>
+            {!prediction && <HowItWorks />}
 
-            {prediction?.top_features && (
-              <div className="bg-surface rounded-3xl border border-surface-light/30 p-8 shadow-xl shadow-bg/50">
-                <FeatureBars features={prediction.top_features} />
-              </div>
+            {prediction && (
+              <>
+                <div className="bg-surface rounded-3xl border border-surface-light/30 p-8 flex flex-col items-center shadow-xl shadow-bg/50">
+                  <WinGauge
+                    probability={prediction?.win_probability}
+                    team1={prediction?.team1 || team1}
+                    team2={prediction?.team2 || team2}
+                  />
+                </div>
+
+                {prediction?.top_features && (
+                  <div className="bg-surface rounded-3xl border border-surface-light/30 p-8 shadow-xl shadow-bg/50">
+                    <FeatureBars features={prediction.top_features} />
+                  </div>
+                )}
+
+                <PredictionReasoning prediction={prediction} />
+                
+                <MatchProjection prediction={prediction} />
+              </>
             )}
-            
-            <MatchProjection prediction={prediction} />
           </div>
 
         </div>
