@@ -493,11 +493,6 @@ function HowItWorks() {
           </div>
           <div className="w-px h-10 bg-surface-lighter"></div>
           <div className="text-center">
-            <span className="text-3xl font-black" style={{ background: 'linear-gradient(90deg, var(--color-primary), var(--color-accent))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>57</span>
-            <p className="text-[10px] text-text-muted uppercase mt-1">Matches Validated</p>
-          </div>
-          <div className="w-px h-10 bg-surface-lighter"></div>
-          <div className="text-center">
             <span className="text-3xl font-black" style={{ background: 'linear-gradient(90deg, var(--color-primary), var(--color-accent))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>12</span>
             <p className="text-[10px] text-text-muted uppercase mt-1">Input Features</p>
           </div>
